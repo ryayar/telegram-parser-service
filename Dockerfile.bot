@@ -1,0 +1,14 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY pyproject.toml .
+COPY shared/ shared/
+COPY bot_api/ bot_api/
+
+RUN pip install --no-cache-dir -e . --no-deps
+
+CMD ["python", "-m", "bot_api.main"]

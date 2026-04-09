@@ -1,0 +1,19 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  userbot:
+    build:
+      context: .
+      dockerfile: Dockerfile.userbot
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./sessions:/app/sessions
+    restart: unless-stopped
