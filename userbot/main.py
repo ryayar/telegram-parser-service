@@ -15,12 +15,10 @@ from telethon import TelegramClient
 
 from shared.config import settings
 from shared.database import init_db
+from shared.logging_setup import setup_logging
 from userbot import monitor, joiner, captcha
 
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+setup_logging("userbot")
 logger = logging.getLogger(__name__)
 
 SESSION_DIR = Path(__file__).resolve().parent.parent / "sessions"

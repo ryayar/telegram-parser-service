@@ -9,6 +9,8 @@ import asyncio
 import logging
 import re
 
+from datetime import datetime
+
 from telethon import TelegramClient, utils
 from telethon.errors import (
     FloodWaitError,
@@ -29,6 +31,7 @@ from shared.database import (
     update_group,
 )
 from shared.models import PendingJoinStatus
+from userbot.state import recently_joined
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +116,8 @@ async def process_pending_joins(client: TelegramClient) -> None:
                         updates["title"] = title
                     await update_group(db, group.id, **updates)
 
+            if chat_id:
+                recently_joined[chat_id] = datetime.utcnow()
             logger.info("Joined group: %s (chat_id=%s)", pj.link, chat_id)
 
         except UserAlreadyParticipantError:

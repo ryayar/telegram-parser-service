@@ -21,3 +21,4 @@ sessions/*.session-journal
 htmlcov/
 logs/
 memory/
+PRIVATE_ROADMAP.md

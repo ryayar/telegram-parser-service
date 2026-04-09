@@ -9,16 +9,14 @@ from aiogram.types import Message
 
 from shared.config import settings
 from shared.database import init_db
+from shared.logging_setup import setup_logging
 
 from bot_api.fsm_storage import SQLiteStorage
 from bot_api.handlers import start, groups, patterns, settings as settings_handler, stats, history, group_detail
 from bot_api.sender import sender_loop
 
 
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+setup_logging("bot")
 logger = logging.getLogger(__name__)
 
 

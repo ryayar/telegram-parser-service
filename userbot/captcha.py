@@ -4,22 +4,23 @@ Detects captcha messages from bots in groups and attempts to solve them.
 Currently supports:
 - Emoji button captchas (click the matching emoji)
 - Simple text button captchas (click the specified button)
+
+Only processes captchas that are either:
+- Explicitly mentioning the userbot account (message.mentioned)
+- Arrived within CAPTCHA_WINDOW_MINUTES after the userbot joined the group
 """
 from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timedelta
 
 from telethon import TelegramClient, events
-from telethon.tl.types import MessageEntityBotCommand
+
+from shared.config import settings
+from userbot.state import recently_joined
 
 logger = logging.getLogger(__name__)
-
-# Common captcha bot usernames
-CAPTCHA_BOTS = {
-    "shieldy_bot", "combot", "captchabot", "joinchannelbot",
-    "grouphelpbot", "rose", "missrose_bot", "grpbutler_bot",
-}
 
 # Patterns that indicate a captcha message
 CAPTCHA_KEYWORDS = [
@@ -36,12 +37,20 @@ CAPTCHA_PATTERN = re.compile(
 )
 
 
+def _recently_joined(chat_id: int) -> bool:
+    """Return True if the userbot joined this chat within the configured window."""
+    join_time = recently_joined.get(chat_id)
+    if join_time is None:
+        return False
+    window = timedelta(minutes=settings.captcha_window_minutes)
+    return datetime.utcnow() - join_time <= window
+
+
 def register_handlers(client: TelegramClient) -> None:
     """Register captcha detection and solving handler."""
 
     @client.on(events.NewMessage())
     async def on_captcha_message(event: events.NewMessage.Event):
-        # Only handle messages with reply markup (buttons)
         if event.is_private or event.out:
             return
 
@@ -62,12 +71,19 @@ def register_handlers(client: TelegramClient) -> None:
         if not sender or not getattr(sender, "bot", False):
             return
 
-        sender_username = getattr(sender, "username", "") or ""
+        # Core filter: only handle captchas directed at us
+        mentioned = getattr(message, "mentioned", False)
+        if not mentioned and not _recently_joined(event.chat_id):
+            logger.debug(
+                "Skipping captcha in chat %d — not mentioned and not recently joined",
+                event.chat_id,
+            )
+            return
 
+        sender_username = getattr(sender, "username", "") or ""
         logger.info(
-            "Detected captcha in chat %d from bot @%s",
-            event.chat_id,
-            sender_username,
+            "Detected captcha in chat %d from bot @%s (mentioned=%s)",
+            event.chat_id, sender_username, mentioned,
         )
 
         # Try to find and click the right button
@@ -86,25 +102,22 @@ def register_handlers(client: TelegramClient) -> None:
                 logger.error("Failed to click captcha button: %s", e)
                 return
 
-        # Strategy 2: Look for emoji mentioned in text → click matching button
-        # Extract emoji from text
+        # Strategy 2: Button text appears in the captcha message → click it
         for row in buttons:
             for btn in row:
                 btn_text = btn.text or ""
-                # If button text appears in the captcha message, click it
                 if btn_text and btn_text in text:
                     try:
                         await btn.click()
                         logger.info(
                             "Clicked matching captcha button '%s' in chat %d",
-                            btn_text,
-                            event.chat_id,
+                            btn_text, event.chat_id,
                         )
                         return
                     except Exception as e:
                         logger.error("Failed to click captcha button '%s': %s", btn_text, e)
 
-        # Strategy 3: Look for a "verify" / "I'm human" type button
+        # Strategy 3: Look for a "verify / I'm human" type button
         for row in buttons:
             for btn in row:
                 btn_text = (btn.text or "").lower()
@@ -113,8 +126,7 @@ def register_handlers(client: TelegramClient) -> None:
                         await btn.click()
                         logger.info(
                             "Clicked verify button '%s' in chat %d",
-                            btn.text,
-                            event.chat_id,
+                            btn.text, event.chat_id,
                         )
                         return
                     except Exception as e:
@@ -122,6 +134,5 @@ def register_handlers(client: TelegramClient) -> None:
 
         logger.warning(
             "Could not solve captcha in chat %d (bot: @%s)",
-            event.chat_id,
-            sender_username,
+            event.chat_id, sender_username,
         )

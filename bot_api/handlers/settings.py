@@ -1,6 +1,7 @@
 """Handlers for user settings (timezone, quiet hours)."""
 from __future__ import annotations
 
+import logging
 import re
 
 from aiogram import Router, F
@@ -12,6 +13,7 @@ from bot_api.keyboards.settings import get_settings_kb, get_timezone_kb, get_qui
 from bot_api.states.user_states import SettingsState
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 QUIET_HOURS_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*[-\u2013\u2014]\s*(\d{1,2}):(\d{2})$")
 
@@ -72,6 +74,7 @@ async def cb_tz_selected(callback: CallbackQuery, state: FSMContext):
         user = await get_or_create_user(db, callback.from_user.id)
         await update_user(db, user.id, timezone=offset)
 
+    logger.info("user=%d set timezone=%s", callback.from_user.id, _tz_label(offset))
     await callback.answer(f"✅ Часовой пояс: {_tz_label(offset)}")
 
     async with get_connection() as db:
@@ -106,6 +109,7 @@ async def msg_timezone(message: Message, state: FSMContext):
         user = await get_or_create_user(db, message.from_user.id)
         await update_user(db, user.id, timezone=offset)
 
+    logger.info("user=%d set timezone=%s (text input)", message.from_user.id, _tz_label(offset))
     await message.answer(
         f"✅ Часовой пояс установлен: <b>{_tz_label(offset)}</b>",
         parse_mode="HTML",
@@ -138,6 +142,7 @@ async def cb_quiet_hours_off(callback: CallbackQuery, state: FSMContext):
     async with get_connection() as db:
         user = await get_or_create_user(db, callback.from_user.id)
         await update_user(db, user.id, quiet_hours_start=None, quiet_hours_end=None)
+    logger.info("user=%d disabled quiet hours", callback.from_user.id)
     await callback.answer("✅ Тихие часы отключены")
 
     async with get_connection() as db:
@@ -176,6 +181,7 @@ async def msg_quiet_hours(message: Message, state: FSMContext):
         user = await get_or_create_user(db, message.from_user.id)
         await update_user(db, user.id, quiet_hours_start=start, quiet_hours_end=end)
 
+    logger.info("user=%d set quiet hours %s—%s", message.from_user.id, start, end)
     await message.answer(
         f"✅ Тихие часы установлены: <b>{start} — {end}</b>",
         parse_mode="HTML",

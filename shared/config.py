@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Captcha
+    captcha_window_minutes: int = 10
+
+    # Logging output: "console" or "both" (console + file)
+    log_output: str = "console"
+    log_file_dir: str = "logs"
+
     @property
     def db_full_path(self) -> Path:
         path = Path(self.db_path)
