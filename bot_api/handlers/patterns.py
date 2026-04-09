@@ -115,8 +115,11 @@ async def msg_pattern_value(message: Message, state: FSMContext):
     async with get_connection() as db:
         user = await get_or_create_user(db, message.from_user.id)
         pattern = await create_pattern(db, user.id, value, pattern_type)
-        await add_pattern_to_all_groups(db, user.id, pattern.id)
-        logger.info("user=%d created pattern id=%d type=%s value=%r, added to all groups", message.from_user.id, pattern.id, pattern_type.value, value)
+        if user.new_pattern_groups:
+            await add_pattern_to_all_groups(db, user.id, pattern.id)
+            logger.info("user=%d created pattern id=%d type=%s value=%r, added to all groups", message.from_user.id, pattern.id, pattern_type.value, value)
+        else:
+            logger.info("user=%d created pattern id=%d type=%s value=%r, not added to groups (new_pattern_groups=off)", message.from_user.id, pattern.id, pattern_type.value, value)
 
     type_label = "🧠 Умный паттерн" if pattern_type == PatternType.SMART else "📝 Обычное слово"
     await message.answer(

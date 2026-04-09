@@ -110,8 +110,11 @@ async def msg_group_link(message: Message, state: FSMContext):
             logger.info("user=%d group id=%d link=%s already exists (status=%s), re-linking", message.from_user.id, group.id, link, group.status.value)
 
         await add_user_to_group(db, user.id, group.id)
-        await set_all_patterns_for_group(db, user.id, group.id)
-        logger.info("user=%d linked to group id=%d, all patterns activated", message.from_user.id, group.id)
+        if user.new_group_patterns:
+            await set_all_patterns_for_group(db, user.id, group.id)
+            logger.info("user=%d linked to group id=%d, all patterns activated", message.from_user.id, group.id)
+        else:
+            logger.info("user=%d linked to group id=%d, no patterns activated (new_group_patterns=off)", message.from_user.id, group.id)
 
     await message.answer(
         "✅ <b>Группа добавлена в очередь!</b>\n\n"

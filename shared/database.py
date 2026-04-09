@@ -53,8 +53,10 @@ CREATE TABLE IF NOT EXISTS users (
     timezone          INTEGER NOT NULL DEFAULT 3,
     quiet_hours_start TEXT,
     quiet_hours_end   TEXT,
-    is_active         INTEGER NOT NULL DEFAULT 1,
-    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+    is_active             INTEGER NOT NULL DEFAULT 1,
+    new_group_patterns    INTEGER NOT NULL DEFAULT 0,
+    new_pattern_groups    INTEGER NOT NULL DEFAULT 0,
+    created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS groups (
@@ -141,11 +143,16 @@ CREATE INDEX IF NOT EXISTS idx_pattern_groups_pattern
 
 async def _run_migrations(db: aiosqlite.Connection) -> None:
     """Apply incremental schema migrations (idempotent)."""
-    try:
-        await db.execute("ALTER TABLE matches ADD COLUMN media_path TEXT")
-        await db.commit()
-    except Exception:
-        pass  # Column already exists
+    for sql in [
+        "ALTER TABLE matches ADD COLUMN media_path TEXT",
+        "ALTER TABLE users ADD COLUMN new_group_patterns INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN new_pattern_groups INTEGER NOT NULL DEFAULT 0",
+    ]:
+        try:
+            await db.execute(sql)
+            await db.commit()
+        except Exception:
+            pass  # Column already exists
 
 
 async def init_db() -> None:
@@ -168,6 +175,7 @@ async def init_db_with_connection(db: aiosqlite.Connection) -> None:
 
 
 def _row_to_user(row: aiosqlite.Row) -> User:
+    keys = row.keys()
     return User(
         id=row["id"],
         telegram_id=row["telegram_id"],
@@ -175,6 +183,8 @@ def _row_to_user(row: aiosqlite.Row) -> User:
         quiet_hours_start=row["quiet_hours_start"],
         quiet_hours_end=row["quiet_hours_end"],
         is_active=bool(row["is_active"]),
+        new_group_patterns=bool(row["new_group_patterns"]) if "new_group_patterns" in keys else False,
+        new_pattern_groups=bool(row["new_pattern_groups"]) if "new_pattern_groups" in keys else False,
         created_at=datetime.fromisoformat(row["created_at"]),
     )
 

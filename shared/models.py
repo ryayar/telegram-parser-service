@@ -38,6 +38,8 @@ class User:
     quiet_hours_start: str | None = None
     quiet_hours_end: str | None = None
     is_active: bool = True
+    new_group_patterns: bool = False  # auto-activate all patterns for a new group
+    new_pattern_groups: bool = False  # auto-activate new pattern for all groups
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 

@@ -42,10 +42,57 @@ async def cb_settings(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         _settings_text(tz, qh),
-        reply_markup=get_settings_kb(),
+        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
         parse_mode="HTML",
     )
     await callback.answer()
+
+
+# ─── Auto-activate toggles ───────────────────────────────────────────
+
+
+@router.callback_query(F.data == "toggle_new_group_patterns")
+async def cb_toggle_new_group_patterns(callback: CallbackQuery):
+    async with get_connection() as db:
+        user = await get_or_create_user(db, callback.from_user.id)
+        new_val = not user.new_group_patterns
+        await update_user(db, user.id, new_group_patterns=int(new_val))
+
+    logger.info("user=%d set new_group_patterns=%s", callback.from_user.id, new_val)
+    status = "✅ Включено" if new_val else "☐ Выключено"
+    await callback.answer(f"Новая группа — все слова: {status}")
+
+    async with get_connection() as db:
+        user = await get_or_create_user(db, callback.from_user.id)
+    tz = _tz_label(user.timezone)
+    qh = f"{user.quiet_hours_start} — {user.quiet_hours_end}" if user.quiet_hours_start else "отключены"
+    await callback.message.edit_text(
+        _settings_text(tz, qh),
+        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "toggle_new_pattern_groups")
+async def cb_toggle_new_pattern_groups(callback: CallbackQuery):
+    async with get_connection() as db:
+        user = await get_or_create_user(db, callback.from_user.id)
+        new_val = not user.new_pattern_groups
+        await update_user(db, user.id, new_pattern_groups=int(new_val))
+
+    logger.info("user=%d set new_pattern_groups=%s", callback.from_user.id, new_val)
+    status = "✅ Включено" if new_val else "☐ Выключено"
+    await callback.answer(f"Новое слово — все группы: {status}")
+
+    async with get_connection() as db:
+        user = await get_or_create_user(db, callback.from_user.id)
+    tz = _tz_label(user.timezone)
+    qh = f"{user.quiet_hours_start} — {user.quiet_hours_end}" if user.quiet_hours_start else "отключены"
+    await callback.message.edit_text(
+        _settings_text(tz, qh),
+        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
+        parse_mode="HTML",
+    )
 
 
 # ─── Timezone ────────────────────────────────────────────────────────
@@ -85,7 +132,7 @@ async def cb_tz_selected(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         _settings_text(tz, qh),
-        reply_markup=get_settings_kb(),
+        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
         parse_mode="HTML",
     )
 
@@ -151,7 +198,7 @@ async def cb_quiet_hours_off(callback: CallbackQuery, state: FSMContext):
     tz = _tz_label(user.timezone)
     await callback.message.edit_text(
         _settings_text(tz, "отключены"),
-        reply_markup=get_settings_kb(),
+        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
         parse_mode="HTML",
     )
 
