@@ -38,17 +38,10 @@ def register_handlers(client: TelegramClient) -> None:
             return
 
         message = event.message
-        text = message.text or message.raw_text or ""
+        # raw_text returns plain text without markdown markers (**bold**, etc.)
+        # message.text may include markdown formatting from Telethon entity rendering
+        text = message.raw_text or message.text or ""
         has_photo = message.photo is not None
-        logger.debug(
-            "msg=%d grouped_id=%s photo=%s document=%s doc_mime=%s text_len=%d",
-            message.id,
-            message.grouped_id,
-            message.photo is not None,
-            message.document is not None,
-            getattr(message.document, "mime_type", None),
-            len(text),
-        )
         if not text and not has_photo:
             return
         if not has_photo and len(text) < 2:

@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = 5       # seconds between DB polls
 SEND_DELAY = 0.05       # 50 ms between sends ≈ 20 msg/s (within Bot API limits)
+PHOTO_TEXT_DELAY = 0.5  # delay between photo and text when sent separately
 MESSAGE_MAX_LEN = 1000  # truncate long messages to this length
 
 
@@ -102,13 +103,30 @@ async def _process_match(bot: Bot, match: Match) -> None:
         if match.media_path:
             import os
             if os.path.exists(match.media_path):
-                await bot.send_photo(
-                    chat_id=user.telegram_id,
-                    photo=FSInputFile(match.media_path),
-                    caption=text,
-                    parse_mode="HTML",
-                    disable_notification=silent,
-                )
+                if len(text) <= 1024:
+                    # Caption fits — send photo with caption
+                    await bot.send_photo(
+                        chat_id=user.telegram_id,
+                        photo=FSInputFile(match.media_path),
+                        caption=text,
+                        parse_mode="HTML",
+                        disable_notification=silent,
+                    )
+                else:
+                    # Caption too long — send photo first, then text separately
+                    await bot.send_photo(
+                        chat_id=user.telegram_id,
+                        photo=FSInputFile(match.media_path),
+                        disable_notification=silent,
+                    )
+                    await asyncio.sleep(PHOTO_TEXT_DELAY)
+                    await bot.send_message(
+                        chat_id=user.telegram_id,
+                        text=text,
+                        parse_mode="HTML",
+                        disable_notification=silent,
+                        disable_web_page_preview=True,
+                    )
             else:
                 # File missing — fall back to text only
                 logger.warning("Media file missing for match #%d: %s", match.id, match.media_path)
