@@ -22,6 +22,8 @@ from telethon.errors import (
 )
 from telethon.tl.functions.messages import ImportChatInviteRequest
 from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.functions.account import UpdateNotifySettingsRequest
+from telethon.tl.types import InputNotifyPeer, InputPeerNotifySettings
 
 from shared.database import (
     get_connection,
@@ -42,6 +44,23 @@ USERNAME_RE = re.compile(r"(?:t\.me/|@)([a-zA-Z]\w{3,})")
 
 JOIN_DELAY_SECONDS = 30  # delay between join attempts to avoid flood
 CHECK_INTERVAL_SECONDS = 60  # how often to check for new pending_joins
+
+
+async def _mute_chat(client: TelegramClient, chat_id: int) -> None:
+    """Mute notifications for a chat so the userbot account stays silent."""
+    try:
+        peer = await client.get_input_entity(chat_id)
+        await client(UpdateNotifySettingsRequest(
+            peer=InputNotifyPeer(peer=peer),
+            settings=InputPeerNotifySettings(
+                mute_until=2**31 - 1,  # max int — mute forever
+                show_previews=False,
+                silent=True,
+            ),
+        ))
+        logger.info("Muted notifications for chat %d", chat_id)
+    except Exception as exc:
+        logger.warning("Failed to mute chat %d: %s", chat_id, exc)
 
 
 async def _join_by_invite(client: TelegramClient, invite_hash: str):
@@ -118,6 +137,7 @@ async def process_pending_joins(client: TelegramClient) -> None:
 
             if chat_id:
                 recently_joined[chat_id] = datetime.utcnow()
+                await _mute_chat(client, chat_id)
             logger.info("Joined group: %s (chat_id=%s)", pj.link, chat_id)
 
         except UserAlreadyParticipantError:
@@ -130,6 +150,7 @@ async def process_pending_joins(client: TelegramClient) -> None:
                     chat_id, title = await _resolve_chat_id(client, pj.link)
                     if chat_id:
                         updates["telegram_id"] = chat_id
+                        await _mute_chat(client, chat_id)
                     if title:
                         updates["title"] = title
                     await update_group(db, group.id, **updates)
