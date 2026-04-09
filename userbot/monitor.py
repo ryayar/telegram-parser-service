@@ -54,7 +54,16 @@ def register_handlers(client: TelegramClient) -> None:
         try:
             chat = await event.get_chat()
             if hasattr(chat, "username") and chat.username:
+                # Public group — normal link
                 message_link = f"https://t.me/{chat.username}/{message.id}"
+            else:
+                # Private group — use internal link (only works for members)
+                # chat_id from Telethon is already negative (-100xxxxxxxxx)
+                # t.me/c/ expects the bare channel id without -100 prefix
+                bare_id = abs(chat_id)
+                if str(bare_id).startswith("100"):
+                    bare_id = int(str(bare_id)[3:])
+                message_link = f"https://t.me/c/{bare_id}/{message.id}"
         except Exception:
             pass
 
