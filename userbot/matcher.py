@@ -66,8 +66,9 @@ def _remove_separators(text: str) -> str:
 
 
 def match_exact(text: str, pattern_value: str) -> bool:
-    """Case-insensitive substring match."""
-    return pattern_value.lower() in text.lower()
+    """Case-insensitive whole-word match."""
+    pattern = re.escape(pattern_value)
+    return bool(re.search(r"\b" + pattern + r"\b", text, re.IGNORECASE))
 
 
 def match_smart(text: str, pattern_value: str) -> bool:
@@ -82,17 +83,20 @@ def match_smart(text: str, pattern_value: str) -> bool:
     text_lower = text.lower()
     pattern_lower = pattern_value.lower()
 
+    def _word_match(t: str, p: str) -> bool:
+        return bool(re.search(r"\b" + re.escape(p) + r"\b", t, re.IGNORECASE))
+
     # 1. Direct match
-    if pattern_lower in text_lower:
+    if _word_match(text_lower, pattern_lower):
         return True
 
     # 2. Transliterated match
     text_trans = _transliterate(text_lower)
     pattern_trans = _transliterate(pattern_lower)
-    if pattern_trans in text_trans:
+    if _word_match(text_trans, pattern_trans):
         return True
 
-    # 3. Match with separators removed
+    # 3. Match with separators removed (no word boundaries — separators already stripped)
     text_no_sep = _remove_separators(text_trans)
     pattern_no_sep = _remove_separators(pattern_trans)
     if pattern_no_sep in text_no_sep:
