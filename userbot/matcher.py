@@ -96,11 +96,14 @@ def match_smart(text: str, pattern_value: str) -> bool:
     if _word_match(text_trans, pattern_trans):
         return True
 
-    # 3. Match with separators removed (no word boundaries — separators already stripped)
-    text_no_sep = _remove_separators(text_trans)
-    pattern_no_sep = _remove_separators(pattern_trans)
-    if pattern_no_sep in text_no_sep:
-        return True
+    # 3. Match with separators removed — only if the pattern itself contains separators
+    # (e.g. "i-phone" → "iphone"). Skipped for plain words to avoid cross-word false positives
+    # where end of one word + start of next accidentally form the pattern after space removal.
+    if any(c in pattern_value for c in " -_."):
+        text_no_sep = _remove_separators(text_trans)
+        pattern_no_sep = _remove_separators(pattern_trans)
+        if pattern_no_sep in text_no_sep:
+            return True
 
     # 4. Fuzzy match for patterns with 2+ words or longer strings
     if " " in pattern_value or len(pattern_value) >= 5:
