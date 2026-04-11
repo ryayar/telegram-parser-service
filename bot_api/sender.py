@@ -57,9 +57,10 @@ def _format_message(
     if len(text) > MESSAGE_MAX_LEN:
         text = text[:MESSAGE_MAX_LEN] + "…"
 
-    parts: list[str] = ["🔔 <b>Новое объявление!</b>\n"]
     if pattern_value:
         parts.append(f"🔑 <b>Запрос:</b> {pattern_value}")
+        parts.append("")
+    parts: list[str] = ["🔔 <b>Новое объявление!</b>\n"]
     parts.append(f"📢 <b>Группа:</b> {group_title or 'Неизвестно'}")
     parts.append("")
     parts.append(text)

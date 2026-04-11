@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     # Captcha
     captcha_window_minutes: int = 10
+    admin_ids: list[int] = []
 
     # Logging output: "console" or "both" (console + file)
     log_output: str = "console"
