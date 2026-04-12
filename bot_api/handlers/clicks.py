@@ -43,5 +43,5 @@ async def cb_go_group(callback: CallbackQuery):
         return
 
     url = _group_url(group.link)
-    # answer(url=...) opens the t.me link directly in Telegram (no browser redirect)
+    logger.info("Answering callback with url=%s", url)
     await callback.answer(url=url)

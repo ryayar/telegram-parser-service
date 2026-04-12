@@ -12,7 +12,7 @@ from shared.database import init_db
 from shared.logging_setup import setup_logging
 
 from bot_api.fsm_storage import SQLiteStorage
-from bot_api.handlers import start, groups, patterns, settings as settings_handler, stats, history, group_detail
+from bot_api.handlers import start, groups, patterns, settings as settings_handler, stats, history, group_detail, clicks
 from bot_api.sender import sender_loop
 
 
@@ -54,6 +54,7 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(group_detail.router)
     dp.include_router(patterns.router)
     dp.include_router(settings_handler.router)
+    dp.include_router(clicks.router)
     dp.include_router(stats.router)
     dp.include_router(history.router)
     dp.include_router(_make_fallback_router())  # must be last

@@ -91,10 +91,15 @@ def _format_message(
 
 
 def _build_notification_kb(groups: list[GroupInfo], match_id: int) -> InlineKeyboardMarkup:
-    """Build inline keyboard: Главное меню (full-width)."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu_new")],
-    ])
+    """Build inline keyboard: callback button per group (tracking) + Главное меню (full-width)."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for title, _, group_id, __ in groups:
+        rows.append([InlineKeyboardButton(
+            text=f"📢 {(title or 'Группа')[:35]}",
+            callback_data=f"go:{match_id}:{group_id}",
+        )])
+    rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu_new")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _send_text(
