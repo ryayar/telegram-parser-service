@@ -74,8 +74,6 @@ def _format_message(
         parts.append(f"📢 <b>Группа:</b> {title or 'Неизвестно'}")
         parts.append("")
         parts.append(text)
-        if link:
-            parts.append(f'\n🔗 <a href="{link}">Открыть сообщение</a>')
     else:
         parts.append(f"📢 <b>Найдено в {len(groups)} группах:</b>")
         for title, link, _, __ in groups:
@@ -99,10 +97,11 @@ def _group_url(group_link: str) -> str:
 def _build_notification_kb(groups: list[GroupInfo], match_id: int) -> InlineKeyboardMarkup:
     """Build inline keyboard: URL button per group + Главное меню (full-width)."""
     rows: list[list[InlineKeyboardButton]] = []
-    for title, _, __, group_link in groups:
+    for title, message_link, __, group_link in groups:
+        url = message_link or _group_url(group_link)
         rows.append([InlineKeyboardButton(
             text=f"📢 {(title or 'Группа')[:35]}",
-            url=_group_url(group_link),
+            url=url,
         )])
     rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu_new")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
