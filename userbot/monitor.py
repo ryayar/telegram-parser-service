@@ -133,7 +133,6 @@ def register_handlers(client: TelegramClient) -> None:
         # Download photo outside the DB context to avoid holding the connection
         if has_photo and created_matches:
             try:
-                from shared.config import settings
                 media_dir = str(settings.db_full_path.parent / "media")
                 os.makedirs(media_dir, exist_ok=True)
                 filename = f"{created_matches[0][1]}_{message.id}.jpg"

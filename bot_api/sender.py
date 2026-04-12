@@ -8,7 +8,7 @@ from datetime import time as dt_time
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 from shared.database import (
     get_connection,
@@ -50,12 +50,16 @@ def _is_quiet_hours(user: User) -> bool:
         return current >= start or current < end
 
 
+# GroupInfo: (title, message_link, group_db_id)
+GroupInfo = tuple[str, str | None, int]
+
+
 def _format_message(
     match: Match,
     pattern_value: str | None,
-    groups: list[tuple[str, str | None]],  # list of (title, link)
+    groups: list[GroupInfo],
 ) -> str:
-    """Format notification text. groups is a list of (group_title, message_link)."""
+    """Format notification text."""
     text = match.message_text
     if len(text) > MESSAGE_MAX_LEN:
         text = text[:MESSAGE_MAX_LEN] + "…"
@@ -66,7 +70,7 @@ def _format_message(
         parts: list[str] = ["🔔 <b>Новое объявление!</b>\n"]
 
     if len(groups) == 1:
-        title, link = groups[0]
+        title, link, _ = groups[0]
         parts.append(f"📢 <b>Группа:</b> {title or 'Неизвестно'}")
         parts.append("")
         parts.append(text)
@@ -74,7 +78,7 @@ def _format_message(
             parts.append(f'\n🔗 <a href="{link}">Открыть сообщение</a>')
     else:
         parts.append(f"📢 <b>Найдено в {len(groups)} группах:</b>")
-        for title, link in groups:
+        for title, link, _ in groups:
             label = title or "Неизвестно"
             if link:
                 parts.append(f'  • <a href="{link}">{label}</a>')
@@ -86,12 +90,32 @@ def _format_message(
     return "\n".join(parts)
 
 
+def _build_notification_kb(groups: list[GroupInfo], match_id: int) -> InlineKeyboardMarkup:
+    """Build inline keyboard: one button per group + Главное меню."""
+    rows: list[list[InlineKeyboardButton]] = []
+    group_btns = [
+        InlineKeyboardButton(
+            text=f"📢 {(title or 'Группа')[:30]}",
+            callback_data=f"go:{match_id}:{group_id}",
+        )
+        for title, _, group_id in groups
+    ]
+    if len(group_btns) == 1:
+        rows.append([group_btns[0], InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu")])
+    else:
+        for btn in group_btns:
+            rows.append([btn])
+        rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def _send_text(
     bot: Bot,
     telegram_id: int,
     text: str,
     silent: bool,
     media_path: str | None,
+    reply_markup: InlineKeyboardMarkup | None = None,
 ) -> None:
     """Send notification (with or without photo)."""
     import os
@@ -103,6 +127,7 @@ async def _send_text(
                 caption=text,
                 parse_mode="HTML",
                 disable_notification=silent,
+                reply_markup=reply_markup,
             )
         else:
             await bot.send_photo(
@@ -117,6 +142,7 @@ async def _send_text(
                 parse_mode="HTML",
                 disable_notification=silent,
                 disable_web_page_preview=True,
+                reply_markup=reply_markup,
             )
     else:
         if media_path:
@@ -127,6 +153,7 @@ async def _send_text(
             parse_mode="HTML",
             disable_notification=silent,
             disable_web_page_preview=True,
+            reply_markup=reply_markup,
         )
 
 
@@ -167,14 +194,14 @@ async def _process_match(
         else:
             siblings = [match]
 
-        # Build (title, link) list for each sibling
-        groups: list[tuple[str, str | None]] = []
+        # Build GroupInfo list for each sibling
+        groups: list[GroupInfo] = []
         sibling_ids: list[int] = []
         for sibling in siblings:
             if sibling.id in already_sent:
                 continue
             g = await get_group_by_id(db, sibling.group_id)
-            groups.append((g.title if g else "", sibling.message_link))
+            groups.append((g.title if g else "", sibling.message_link, sibling.group_id))
             sibling_ids.append(sibling.id)
 
     if not sibling_ids:
@@ -183,9 +210,10 @@ async def _process_match(
     silent = _is_quiet_hours(user)
     text = _format_message(match, pattern_value, groups)
     media_path = match.media_path  # use photo from the first match
+    keyboard = _build_notification_kb(groups, match.id)
 
     try:
-        await _send_text(bot, user.telegram_id, text, silent, media_path)
+        await _send_text(bot, user.telegram_id, text, silent, media_path, keyboard)
 
         async with get_connection() as db:
             await mark_matches_sent_batch(db, sibling_ids)

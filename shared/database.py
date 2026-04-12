@@ -113,6 +113,14 @@ CREATE TABLE IF NOT EXISTS pattern_groups (
     group_id   INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     PRIMARY KEY (user_id, pattern_id, group_id)
 );
+
+CREATE TABLE IF NOT EXISTS link_clicks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id   INTEGER REFERENCES matches(id) ON DELETE SET NULL,
+    group_id   INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    clicked_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 SQL_CREATE_INDEXES = """
@@ -140,6 +148,12 @@ CREATE INDEX IF NOT EXISTS idx_pattern_groups_group
     ON pattern_groups(group_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_pattern_groups_pattern
     ON pattern_groups(pattern_id);
+CREATE INDEX IF NOT EXISTS idx_link_clicks_group_id
+    ON link_clicks(group_id);
+CREATE INDEX IF NOT EXISTS idx_link_clicks_clicked_at
+    ON link_clicks(clicked_at);
+CREATE INDEX IF NOT EXISTS idx_link_clicks_user_id
+    ON link_clicks(user_id);
 """
 
 
@@ -728,6 +742,55 @@ async def get_patterns_for_user_in_group(
     )
     rows = await cursor.fetchall()
     return [_row_to_pattern(r) for r in rows]
+
+
+# ─── Link Clicks CRUD ───────────────────────────────────────────────
+
+
+async def create_link_click(
+    db: aiosqlite.Connection,
+    match_id: int | None,
+    group_id: int,
+    user_id: int,
+) -> None:
+    await db.execute(
+        "INSERT INTO link_clicks (match_id, group_id, user_id) VALUES (?, ?, ?)",
+        (match_id, group_id, user_id),
+    )
+    await db.commit()
+
+
+async def get_click_stats(
+    db: aiosqlite.Connection,
+    days: int = 30,
+    limit: int = 15,
+) -> list[aiosqlite.Row]:
+    """Return top groups by click count over the last N days."""
+    cursor = await db.execute(
+        """
+        SELECT g.title, g.link, COUNT(lc.id) AS clicks
+        FROM link_clicks lc
+        JOIN groups g ON g.id = lc.group_id
+        WHERE lc.clicked_at > datetime('now', ?)
+        GROUP BY lc.group_id
+        ORDER BY clicks DESC
+        LIMIT ?
+        """,
+        (f"-{days} days", limit),
+    )
+    return await cursor.fetchall()
+
+
+async def get_total_clicks(db: aiosqlite.Connection, days: int = 30) -> int:
+    cursor = await db.execute(
+        "SELECT COUNT(*) AS cnt FROM link_clicks WHERE clicked_at > datetime('now', ?)",
+        (f"-{days} days",),
+    )
+    row = await cursor.fetchone()
+    return row["cnt"]
+
+
+# ─── Pattern-Groups CRUD ─────────────────────────────────────────────
 
 
 async def add_pattern_to_all_groups(
