@@ -90,26 +90,13 @@ def match_smart(text: str, pattern_value: str) -> bool:
     if _word_match(text_lower, pattern_lower):
         return True
 
-    # 2. Prefix match — any word in text starts with pattern (e.g. "тест" → "тестовые")
-    # Only for patterns of 3+ chars to avoid noise from very short queries
-    if len(pattern_lower) >= 3:
-        words = re.findall(r"\w+", text_lower)
-        if any(w.startswith(pattern_lower) for w in words):
-            return True
-
-    # 3. Transliterated match
+    # 2. Transliterated match
     text_trans = _transliterate(text_lower)
     pattern_trans = _transliterate(pattern_lower)
     if _word_match(text_trans, pattern_trans):
         return True
 
-    # 3a. Transliterated prefix match
-    if len(pattern_trans) >= 3:
-        words_trans = re.findall(r"\w+", text_trans)
-        if any(w.startswith(pattern_trans) for w in words_trans):
-            return True
-
-    # 4. Match with separators removed — only if the pattern itself contains separators
+    # 3. Match with separators removed — only if the pattern itself contains separators
     # (e.g. "i-phone" → "iphone"). Skipped for plain words to avoid cross-word false positives
     # where end of one word + start of next accidentally form the pattern after space removal.
     if any(c in pattern_value for c in " -_."):
@@ -118,7 +105,7 @@ def match_smart(text: str, pattern_value: str) -> bool:
         if pattern_no_sep in text_no_sep:
             return True
 
-    # 5. Fuzzy match for patterns with 2+ words or longer strings
+    # 4. Fuzzy match for patterns with 2+ words or longer strings
     if " " in pattern_value or len(pattern_value) >= 5:
         ratio = fuzz.token_set_ratio(text_trans, pattern_trans)
         if ratio >= 85:
