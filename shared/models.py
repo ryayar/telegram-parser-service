@@ -40,6 +40,7 @@ class User:
     is_active: bool = True
     new_group_patterns: bool = False  # auto-activate all patterns for a new group
     new_pattern_groups: bool = False  # auto-activate new pattern for all groups
+    group_duplicates: bool = True     # group cross-posted duplicates into one notification
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -79,6 +80,7 @@ class Match:
     text_hash: str = ""
     message_link: str | None = None
     media_path: str | None = None
+    send_after: datetime | None = None   # set for grouped duplicates — delay until window expires
     created_at: datetime = field(default_factory=datetime.utcnow)
     sent_at: datetime | None = None
 

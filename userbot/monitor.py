@@ -11,15 +11,16 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timedelta
 
 from telethon import TelegramClient, events
 
+from shared.config import settings
 from shared.database import (
     get_connection,
     get_group_by_telegram_id,
     get_users_for_telegram_group,
     get_patterns_for_user_in_group,
-    check_duplicate,
     create_match,
     update_match_media,
 )
@@ -98,13 +99,15 @@ def register_handlers(client: TelegramClient) -> None:
                 if not matched:
                     continue
 
-                # Deduplication
-                is_dup = await check_duplicate(db, user.id, text_hash, hours=2)
-                if is_dup:
-                    logger.debug(
-                        "Duplicate for user %d, hash=%s", user.telegram_id, text_hash[:8]
-                    )
-                    continue
+                # Grouping: delay so sender can bundle duplicates into one notification.
+                # No grouping: send_after=None → deliver immediately, each group separately.
+                if user.group_duplicates:
+                    send_after = (
+                        datetime.utcnow()
+                        + timedelta(minutes=settings.duplicate_window_minutes)
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+                else:
+                    send_after = None
 
                 # Write match for the first matched pattern
                 first_pattern = matched[0]
@@ -116,6 +119,7 @@ def register_handlers(client: TelegramClient) -> None:
                     text_hash=text_hash,
                     pattern_id=first_pattern.id,
                     message_link=message_link,
+                    send_after=send_after,
                 )
                 logger.info(
                     "Match for user %d: pattern='%s' in chat %d",

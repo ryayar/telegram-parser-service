@@ -9,7 +9,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from shared.database import get_connection, get_or_create_user, update_user
-from bot_api.keyboards.settings import get_settings_kb, get_timezone_kb, get_quiet_hours_kb
+from bot_api.keyboards.settings import get_timezone_kb, get_quiet_hours_kb
 from bot_api.states.user_states import SettingsState
 
 router = Router()
@@ -21,6 +21,11 @@ QUIET_HOURS_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*[-\u2013\u2014]\s*(\d{1,2}):(
 def _tz_label(offset: int) -> str:
     sign = "+" if offset >= 0 else ""
     return f"UTC{sign}{offset}"
+
+
+def _settings_kb(user) -> "InlineKeyboardMarkup":
+    from bot_api.keyboards.settings import get_settings_kb
+    return get_settings_kb(user.new_group_patterns, user.new_pattern_groups, user.group_duplicates)
 
 
 def _settings_text(tz: str, qh: str) -> str:
@@ -42,7 +47,7 @@ async def cb_settings(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         _settings_text(tz, qh),
-        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
+        reply_markup=_settings_kb(user),
         parse_mode="HTML",
     )
     await callback.answer()
@@ -68,7 +73,29 @@ async def cb_toggle_new_group_patterns(callback: CallbackQuery):
     qh = f"{user.quiet_hours_start} — {user.quiet_hours_end}" if user.quiet_hours_start else "отключены"
     await callback.message.edit_text(
         _settings_text(tz, qh),
-        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
+        reply_markup=_settings_kb(user),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "toggle_group_duplicates")
+async def cb_toggle_group_duplicates(callback: CallbackQuery):
+    async with get_connection() as db:
+        user = await get_or_create_user(db, callback.from_user.id)
+        new_val = not user.group_duplicates
+        await update_user(db, user.id, group_duplicates=int(new_val))
+
+    logger.info("user=%d set group_duplicates=%s", callback.from_user.id, new_val)
+    status = "✅ Включено" if new_val else "☐ Выключено"
+    await callback.answer(f"Группировка дублей: {status}")
+
+    async with get_connection() as db:
+        user = await get_or_create_user(db, callback.from_user.id)
+    tz = _tz_label(user.timezone)
+    qh = f"{user.quiet_hours_start} — {user.quiet_hours_end}" if user.quiet_hours_start else "отключены"
+    await callback.message.edit_text(
+        _settings_text(tz, qh),
+        reply_markup=_settings_kb(user),
         parse_mode="HTML",
     )
 
@@ -90,7 +117,7 @@ async def cb_toggle_new_pattern_groups(callback: CallbackQuery):
     qh = f"{user.quiet_hours_start} — {user.quiet_hours_end}" if user.quiet_hours_start else "отключены"
     await callback.message.edit_text(
         _settings_text(tz, qh),
-        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
+        reply_markup=_settings_kb(user),
         parse_mode="HTML",
     )
 
@@ -132,7 +159,7 @@ async def cb_tz_selected(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         _settings_text(tz, qh),
-        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
+        reply_markup=_settings_kb(user),
         parse_mode="HTML",
     )
 
@@ -198,7 +225,7 @@ async def cb_quiet_hours_off(callback: CallbackQuery, state: FSMContext):
     tz = _tz_label(user.timezone)
     await callback.message.edit_text(
         _settings_text(tz, "отключены"),
-        reply_markup=get_settings_kb(user.new_group_patterns, user.new_pattern_groups),
+        reply_markup=_settings_kb(user),
         parse_mode="HTML",
     )
 

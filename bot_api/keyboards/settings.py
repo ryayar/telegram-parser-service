@@ -17,9 +17,14 @@ TIMEZONE_OPTIONS = [
 ]
 
 
-def get_settings_kb(new_group_patterns: bool = False, new_pattern_groups: bool = False) -> InlineKeyboardMarkup:
+def get_settings_kb(
+    new_group_patterns: bool = False,
+    new_pattern_groups: bool = False,
+    group_duplicates: bool = True,
+) -> InlineKeyboardMarkup:
     ngp = "✅ Вкл" if new_group_patterns else "☐ Выкл"
     npg = "✅ Вкл" if new_pattern_groups else "☐ Выкл"
+    gd = "✅ Вкл" if group_duplicates else "☐ Выкл"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌍 Изменить часовой пояс", callback_data="settings_timezone")],
         [InlineKeyboardButton(text="🔕 Изменить тихие часы", callback_data="settings_quiet_hours")],
@@ -30,6 +35,10 @@ def get_settings_kb(new_group_patterns: bool = False, new_pattern_groups: bool =
         [InlineKeyboardButton(
             text=f"🔑 Новое слово — все группы: {npg}",
             callback_data="toggle_new_pattern_groups",
+        )],
+        [InlineKeyboardButton(
+            text=f"🗂 Группировать дубли: {gd}",
+            callback_data="toggle_group_duplicates",
         )],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="main_menu")],
     ])

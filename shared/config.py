@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     captcha_window_minutes: int = 10
     admin_ids: list[int] = []
 
+    # Duplicate grouping
+    duplicate_window_minutes: int = 3
+
     # Logging output: "console" or "both" (console + file)
     log_output: str = "console"
     log_file_dir: str = "logs"

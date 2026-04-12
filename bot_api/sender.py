@@ -13,7 +13,9 @@ from aiogram.types import FSInputFile
 from shared.database import (
     get_connection,
     get_unsent_matches,
+    get_grouped_matches,
     mark_match_sent,
+    mark_matches_sent_batch,
     get_group_by_id,
     _row_to_user,
 )
@@ -50,9 +52,10 @@ def _is_quiet_hours(user: User) -> bool:
 
 def _format_message(
     match: Match,
-    group_title: str,
     pattern_value: str | None,
+    groups: list[tuple[str, str | None]],  # list of (title, link)
 ) -> str:
+    """Format notification text. groups is a list of (group_title, message_link)."""
     text = match.message_text
     if len(text) > MESSAGE_MAX_LEN:
         text = text[:MESSAGE_MAX_LEN] + "…"
@@ -61,33 +64,94 @@ def _format_message(
         parts: list[str] = [f"🔑 <b>Запрос:</b> {pattern_value}\n"]
     else:
         parts: list[str] = ["🔔 <b>Новое объявление!</b>\n"]
-    parts.append(f"📢 <b>Группа:</b> {group_title or 'Неизвестно'}")
-    parts.append("")
-    parts.append(text)
-    if match.message_link:
-        parts.append(f'\n🔗 <a href="{match.message_link}">Открыть сообщение</a>')
+
+    if len(groups) == 1:
+        title, link = groups[0]
+        parts.append(f"📢 <b>Группа:</b> {title or 'Неизвестно'}")
+        parts.append("")
+        parts.append(text)
+        if link:
+            parts.append(f'\n🔗 <a href="{link}">Открыть сообщение</a>')
+    else:
+        parts.append(f"📢 <b>Найдено в {len(groups)} группах:</b>")
+        for title, link in groups:
+            label = title or "Неизвестно"
+            if link:
+                parts.append(f'  • <a href="{link}">{label}</a>')
+            else:
+                parts.append(f"  • {label}")
+        parts.append("")
+        parts.append(text)
 
     return "\n".join(parts)
 
 
-async def _process_match(bot: Bot, match: Match) -> None:
-    """Send one match notification; mark it sent regardless of delivery outcome."""
+async def _send_text(
+    bot: Bot,
+    telegram_id: int,
+    text: str,
+    silent: bool,
+    media_path: str | None,
+) -> None:
+    """Send notification (with or without photo)."""
+    import os
+    if media_path and os.path.exists(media_path):
+        if len(text) <= 1024:
+            await bot.send_photo(
+                chat_id=telegram_id,
+                photo=FSInputFile(media_path),
+                caption=text,
+                parse_mode="HTML",
+                disable_notification=silent,
+            )
+        else:
+            await bot.send_photo(
+                chat_id=telegram_id,
+                photo=FSInputFile(media_path),
+                disable_notification=silent,
+            )
+            await asyncio.sleep(PHOTO_TEXT_DELAY)
+            await bot.send_message(
+                chat_id=telegram_id,
+                text=text,
+                parse_mode="HTML",
+                disable_notification=silent,
+                disable_web_page_preview=True,
+            )
+    else:
+        if media_path:
+            logger.warning("Media file missing: %s", media_path)
+        await bot.send_message(
+            chat_id=telegram_id,
+            text=text,
+            parse_mode="HTML",
+            disable_notification=silent,
+            disable_web_page_preview=True,
+        )
+
+
+async def _process_match(
+    bot: Bot,
+    match: Match,
+    already_sent: set[int],
+) -> None:
+    """Send notification for a match (possibly grouped with siblings)."""
+    if match.id in already_sent:
+        return
+
     async with get_connection() as db:
         row = await (await db.execute("SELECT * FROM users WHERE id = ?", (match.user_id,))).fetchone()
         if row is None:
-            # User was deleted — discard the match
             await mark_match_sent(db, match.id)
+            already_sent.add(match.id)
             return
 
         user = _row_to_user(row)
 
-        # User paused monitoring — discard silently so the backlog doesn't grow
         if not user.is_active:
             await mark_match_sent(db, match.id)
+            already_sent.add(match.id)
             return
-
-        group = await get_group_by_id(db, match.group_id)
-        group_title = group.title if group else ""
 
         pattern_value: str | None = None
         if match.pattern_id is not None:
@@ -97,80 +161,57 @@ async def _process_match(bot: Bot, match: Match) -> None:
             if prow:
                 pattern_value = prow["value"]
 
+        # Collect all sibling matches (same user + text hash, ready to send)
+        if user.group_duplicates:
+            siblings = await get_grouped_matches(db, match.user_id, match.text_hash)
+        else:
+            siblings = [match]
+
+        # Build (title, link) list for each sibling
+        groups: list[tuple[str, str | None]] = []
+        sibling_ids: list[int] = []
+        for sibling in siblings:
+            if sibling.id in already_sent:
+                continue
+            g = await get_group_by_id(db, sibling.group_id)
+            groups.append((g.title if g else "", sibling.message_link))
+            sibling_ids.append(sibling.id)
+
+    if not sibling_ids:
+        return
+
     silent = _is_quiet_hours(user)
-    text = _format_message(match, group_title, pattern_value)
+    text = _format_message(match, pattern_value, groups)
+    media_path = match.media_path  # use photo from the first match
 
     try:
-        if match.media_path:
-            import os
-            if os.path.exists(match.media_path):
-                if len(text) <= 1024:
-                    # Caption fits — send photo with caption
-                    await bot.send_photo(
-                        chat_id=user.telegram_id,
-                        photo=FSInputFile(match.media_path),
-                        caption=text,
-                        parse_mode="HTML",
-                        disable_notification=silent,
-                    )
-                else:
-                    # Caption too long — send photo first, then text separately
-                    await bot.send_photo(
-                        chat_id=user.telegram_id,
-                        photo=FSInputFile(match.media_path),
-                        disable_notification=silent,
-                    )
-                    await asyncio.sleep(PHOTO_TEXT_DELAY)
-                    await bot.send_message(
-                        chat_id=user.telegram_id,
-                        text=text,
-                        parse_mode="HTML",
-                        disable_notification=silent,
-                        disable_web_page_preview=True,
-                    )
-            else:
-                # File missing — fall back to text only
-                logger.warning("Media file missing for match #%d: %s", match.id, match.media_path)
-                await bot.send_message(
-                    chat_id=user.telegram_id,
-                    text=text,
-                    parse_mode="HTML",
-                    disable_notification=silent,
-                    disable_web_page_preview=True,
-                )
-        else:
-            await bot.send_message(
-                chat_id=user.telegram_id,
-                text=text,
-                parse_mode="HTML",
-                disable_notification=silent,
-                disable_web_page_preview=True,
-            )
+        await _send_text(bot, user.telegram_id, text, silent, media_path)
+
         async with get_connection() as db:
-            await mark_match_sent(db, match.id)
+            await mark_matches_sent_batch(db, sibling_ids)
+        already_sent.update(sibling_ids)
+
         logger.info(
-            "match #%d → user %d (silent=%s, photo=%s)",
-            match.id, user.telegram_id, silent, bool(match.media_path),
+            "match(es) %s → user %d (groups=%d, silent=%s)",
+            sibling_ids, user.telegram_id, len(groups), silent,
         )
 
     except TelegramForbiddenError:
-        # User blocked the bot — mark sent so we never retry
-        logger.warning(
-            "User %d blocked the bot; discarding match #%d", user.telegram_id, match.id
-        )
+        logger.warning("User %d blocked the bot; discarding matches %s", user.telegram_id, sibling_ids)
         async with get_connection() as db:
-            await mark_match_sent(db, match.id)
+            await mark_matches_sent_batch(db, sibling_ids)
+        already_sent.update(sibling_ids)
 
     except TelegramBadRequest as exc:
-        logger.error("Bad request for match #%d: %s; discarding", match.id, exc)
+        logger.error("Bad request for matches %s: %s; discarding", sibling_ids, exc)
         async with get_connection() as db:
-            await mark_match_sent(db, match.id)
+            await mark_matches_sent_batch(db, sibling_ids)
+        already_sent.update(sibling_ids)
 
     except Exception as exc:
-        # Transient error — do NOT mark sent; will retry on next poll
         logger.error(
-            "Transient error sending match #%d to user %d: %s",
-            match.id, user.telegram_id, exc,
+            "Transient error sending matches %s to user %d: %s",
+            sibling_ids, user.telegram_id, exc,
         )
 
 
@@ -184,8 +225,9 @@ async def sender_loop(bot: Bot) -> None:
 
             if matches:
                 logger.debug("Processing %d unsent match(es)", len(matches))
+                already_sent: set[int] = set()
                 for match in matches:
-                    await _process_match(bot, match)
+                    await _process_match(bot, match, already_sent)
                     await asyncio.sleep(SEND_DELAY)
 
         except Exception as exc:

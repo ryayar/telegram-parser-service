@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_active             INTEGER NOT NULL DEFAULT 1,
     new_group_patterns    INTEGER NOT NULL DEFAULT 0,
     new_pattern_groups    INTEGER NOT NULL DEFAULT 0,
+    group_duplicates      INTEGER NOT NULL DEFAULT 1,
     created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -92,6 +93,7 @@ CREATE TABLE IF NOT EXISTS matches (
     text_hash    TEXT NOT NULL,
     message_link TEXT,
     media_path   TEXT,
+    send_after   TEXT,
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     sent_at      TEXT
 );
@@ -145,8 +147,10 @@ async def _run_migrations(db: aiosqlite.Connection) -> None:
     """Apply incremental schema migrations (idempotent)."""
     for sql in [
         "ALTER TABLE matches ADD COLUMN media_path TEXT",
+        "ALTER TABLE matches ADD COLUMN send_after TEXT",
         "ALTER TABLE users ADD COLUMN new_group_patterns INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN new_pattern_groups INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN group_duplicates INTEGER NOT NULL DEFAULT 1",
     ]:
         try:
             await db.execute(sql)
@@ -185,6 +189,7 @@ def _row_to_user(row: aiosqlite.Row) -> User:
         is_active=bool(row["is_active"]),
         new_group_patterns=bool(row["new_group_patterns"]) if "new_group_patterns" in keys else False,
         new_pattern_groups=bool(row["new_pattern_groups"]) if "new_pattern_groups" in keys else False,
+        group_duplicates=bool(row["group_duplicates"]) if "group_duplicates" in keys else True,
         created_at=datetime.fromisoformat(row["created_at"]),
     )
 
@@ -220,6 +225,7 @@ def _row_to_match(row: aiosqlite.Row) -> Match:
         text_hash=row["text_hash"],
         message_link=row["message_link"],
         media_path=row["media_path"] if "media_path" in row.keys() else None,
+        send_after=datetime.fromisoformat(row["send_after"]) if row["send_after"] else None,
         created_at=datetime.fromisoformat(row["created_at"]),
         sent_at=datetime.fromisoformat(row["sent_at"]) if row["sent_at"] else None,
     )
@@ -459,13 +465,14 @@ async def create_match(
     text_hash: str,
     pattern_id: int | None = None,
     message_link: str | None = None,
+    send_after: str | None = None,
 ) -> Match:
     cursor = await db.execute(
         """
-        INSERT INTO matches (user_id, group_id, pattern_id, message_text, text_hash, message_link)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO matches (user_id, group_id, pattern_id, message_text, text_hash, message_link, send_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (user_id, group_id, pattern_id, message_text, text_hash, message_link),
+        (user_id, group_id, pattern_id, message_text, text_hash, message_link, send_after),
     )
     await db.commit()
     cursor = await db.execute(
@@ -498,10 +505,12 @@ async def check_duplicate(
 async def get_unsent_matches(
     db: aiosqlite.Connection, limit: int = 50
 ) -> list[Match]:
+    """Return unsent matches that are ready to deliver (send_after has passed or is NULL)."""
     cursor = await db.execute(
         """
         SELECT * FROM matches
         WHERE sent_at IS NULL
+          AND (send_after IS NULL OR send_after <= datetime('now'))
         ORDER BY created_at
         LIMIT ?
         """,
@@ -509,6 +518,37 @@ async def get_unsent_matches(
     )
     rows = await cursor.fetchall()
     return [_row_to_match(r) for r in rows]
+
+
+async def get_grouped_matches(
+    db: aiosqlite.Connection,
+    user_id: int,
+    text_hash: str,
+) -> list[Match]:
+    """Return all unsent ready matches for a user with the same text hash (for grouping)."""
+    cursor = await db.execute(
+        """
+        SELECT * FROM matches
+        WHERE user_id = ? AND text_hash = ? AND sent_at IS NULL
+          AND (send_after IS NULL OR send_after <= datetime('now'))
+        ORDER BY created_at
+        """,
+        (user_id, text_hash),
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_match(r) for r in rows]
+
+
+async def mark_matches_sent_batch(db: aiosqlite.Connection, match_ids: list[int]) -> None:
+    """Mark multiple matches as sent in a single query."""
+    if not match_ids:
+        return
+    placeholders = ",".join("?" * len(match_ids))
+    await db.execute(
+        f"UPDATE matches SET sent_at = datetime('now') WHERE id IN ({placeholders})",
+        match_ids,
+    )
+    await db.commit()
 
 
 async def mark_match_sent(db: aiosqlite.Connection, match_id: int) -> None:
