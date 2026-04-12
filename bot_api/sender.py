@@ -90,13 +90,19 @@ def _format_message(
     return "\n".join(parts)
 
 
+def _group_url(group_link: str) -> str:
+    if group_link.startswith("@"):
+        return f"https://t.me/{group_link[1:]}"
+    return group_link
+
+
 def _build_notification_kb(groups: list[GroupInfo], match_id: int) -> InlineKeyboardMarkup:
-    """Build inline keyboard: callback button per group (tracking) + Главное меню (full-width)."""
+    """Build inline keyboard: URL button per group + Главное меню (full-width)."""
     rows: list[list[InlineKeyboardButton]] = []
-    for title, _, group_id, __ in groups:
+    for title, _, __, group_link in groups:
         rows.append([InlineKeyboardButton(
             text=f"📢 {(title or 'Группа')[:35]}",
-            callback_data=f"go:{match_id}:{group_id}",
+            url=_group_url(group_link),
         )])
     rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu_new")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
