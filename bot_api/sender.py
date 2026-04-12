@@ -121,6 +121,7 @@ async def _send_text(
     import os
     if media_path and os.path.exists(media_path):
         if len(text) <= 1024:
+            # Photo + caption in one message → single notification with sound
             await bot.send_photo(
                 chat_id=telegram_id,
                 photo=FSInputFile(media_path),
@@ -130,10 +131,12 @@ async def _send_text(
                 reply_markup=reply_markup,
             )
         else:
+            # Caption too long → two messages: photo silent, text with sound
+            # User gets 2 pushes but only one vibration
             await bot.send_photo(
                 chat_id=telegram_id,
                 photo=FSInputFile(media_path),
-                disable_notification=silent,
+                disable_notification=True,
             )
             await asyncio.sleep(PHOTO_TEXT_DELAY)
             await bot.send_message(
