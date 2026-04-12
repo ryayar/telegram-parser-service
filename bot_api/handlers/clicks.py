@@ -12,6 +12,12 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+def _group_url(group_link: str) -> str:
+    if group_link.startswith("@"):
+        return f"https://t.me/{group_link[1:]}"
+    return group_link
+
+
 @router.callback_query(F.data.startswith("go:"))
 async def cb_go_group(callback: CallbackQuery):
     parts = callback.data.split(":")
@@ -33,18 +39,9 @@ async def cb_go_group(callback: CallbackQuery):
     )
 
     if not group:
-        await callback.answer("Группа не найдена")
+        await callback.answer("Группа не найдена", show_alert=True)
         return
 
-    # Build navigable link
-    link = group.link
-    if link.startswith("@"):
-        link = f"https://t.me/{link.lstrip('@')}"
-
-    title = group.title or group.link
-    await callback.answer()
-    await callback.message.answer(
-        f'<a href="{link}"><b>{title}</b></a>',
-        parse_mode="HTML",
-        disable_web_page_preview=False,
-    )
+    url = _group_url(group.link)
+    # answer(url=...) opens the t.me link directly in Telegram (no browser redirect)
+    await callback.answer(url=url)

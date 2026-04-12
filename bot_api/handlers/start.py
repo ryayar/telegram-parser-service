@@ -46,6 +46,20 @@ async def cb_main_menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(F.data == "menu_new")
+async def cb_menu_new(callback: CallbackQuery, state: FSMContext):
+    """Send main menu as a new message (used from notifications)."""
+    await state.clear()
+    async with get_connection() as db:
+        user = await get_or_create_user(db, callback.from_user.id)
+    await callback.message.answer(
+        WELCOME_TEXT,
+        reply_markup=get_main_menu_kb(user.is_active),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data == "toggle_pause")
 async def cb_toggle_pause(callback: CallbackQuery):
     async with get_connection() as db:

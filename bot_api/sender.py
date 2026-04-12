@@ -50,8 +50,8 @@ def _is_quiet_hours(user: User) -> bool:
         return current >= start or current < end
 
 
-# GroupInfo: (title, message_link, group_db_id)
-GroupInfo = tuple[str, str | None, int]
+# GroupInfo: (title, message_link, group_db_id, group_link)
+GroupInfo = tuple[str, str | None, int, str]
 
 
 def _format_message(
@@ -70,7 +70,7 @@ def _format_message(
         parts: list[str] = ["🔔 <b>Новое объявление!</b>\n"]
 
     if len(groups) == 1:
-        title, link, _ = groups[0]
+        title, link, _, __ = groups[0]
         parts.append(f"📢 <b>Группа:</b> {title or 'Неизвестно'}")
         parts.append("")
         parts.append(text)
@@ -78,7 +78,7 @@ def _format_message(
             parts.append(f'\n🔗 <a href="{link}">Открыть сообщение</a>')
     else:
         parts.append(f"📢 <b>Найдено в {len(groups)} группах:</b>")
-        for title, link, _ in groups:
+        for title, link, _, __ in groups:
             label = title or "Неизвестно"
             if link:
                 parts.append(f'  • <a href="{link}">{label}</a>')
@@ -90,22 +90,22 @@ def _format_message(
     return "\n".join(parts)
 
 
+def _group_url(group_link: str) -> str:
+    """Convert stored group link to a navigable t.me URL."""
+    if group_link.startswith("@"):
+        return f"https://t.me/{group_link[1:]}"
+    return group_link  # already https://t.me/... or https://t.me/+...
+
+
 def _build_notification_kb(groups: list[GroupInfo], match_id: int) -> InlineKeyboardMarkup:
-    """Build inline keyboard: one button per group + Главное меню."""
+    """Build inline keyboard: callback button per group (tracking) + Главное меню (full-width)."""
     rows: list[list[InlineKeyboardButton]] = []
-    group_btns = [
-        InlineKeyboardButton(
-            text=f"📢 {(title or 'Группа')[:30]}",
+    for title, _, group_id, __ in groups:
+        rows.append([InlineKeyboardButton(
+            text=f"📢 {(title or 'Группа')[:35]}",
             callback_data=f"go:{match_id}:{group_id}",
-        )
-        for title, _, group_id in groups
-    ]
-    if len(group_btns) == 1:
-        rows.append([group_btns[0], InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu")])
-    else:
-        for btn in group_btns:
-            rows.append([btn])
-        rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
+        )])
+    rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu_new")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -201,7 +201,7 @@ async def _process_match(
             if sibling.id in already_sent:
                 continue
             g = await get_group_by_id(db, sibling.group_id)
-            groups.append((g.title if g else "", sibling.message_link, sibling.group_id))
+            groups.append((g.title if g else "", sibling.message_link, sibling.group_id, g.link if g else ""))
             sibling_ids.append(sibling.id)
 
     if not sibling_ids:

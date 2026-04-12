@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_active             INTEGER NOT NULL DEFAULT 1,
     new_group_patterns    INTEGER NOT NULL DEFAULT 0,
     new_pattern_groups    INTEGER NOT NULL DEFAULT 0,
-    group_duplicates      INTEGER NOT NULL DEFAULT 1,
+    group_duplicates      INTEGER NOT NULL DEFAULT 0,
     created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -164,7 +164,7 @@ async def _run_migrations(db: aiosqlite.Connection) -> None:
         "ALTER TABLE matches ADD COLUMN send_after TEXT",
         "ALTER TABLE users ADD COLUMN new_group_patterns INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN new_pattern_groups INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE users ADD COLUMN group_duplicates INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN group_duplicates INTEGER NOT NULL DEFAULT 0",
     ]:
         try:
             await db.execute(sql)
@@ -203,7 +203,7 @@ def _row_to_user(row: aiosqlite.Row) -> User:
         is_active=bool(row["is_active"]),
         new_group_patterns=bool(row["new_group_patterns"]) if "new_group_patterns" in keys else False,
         new_pattern_groups=bool(row["new_pattern_groups"]) if "new_pattern_groups" in keys else False,
-        group_duplicates=bool(row["group_duplicates"]) if "group_duplicates" in keys else True,
+        group_duplicates=bool(row["group_duplicates"]) if "group_duplicates" in keys else False,
         created_at=datetime.fromisoformat(row["created_at"]),
     )
 

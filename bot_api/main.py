@@ -54,8 +54,8 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(group_detail.router)
     dp.include_router(patterns.router)
     dp.include_router(settings_handler.router)
-    dp.include_router(stats.router)
     dp.include_router(clicks.router)
+    dp.include_router(stats.router)
     dp.include_router(history.router)
     dp.include_router(_make_fallback_router())  # must be last
 

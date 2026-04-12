@@ -40,7 +40,7 @@ class User:
     is_active: bool = True
     new_group_patterns: bool = False  # auto-activate all patterns for a new group
     new_pattern_groups: bool = False  # auto-activate new pattern for all groups
-    group_duplicates: bool = True     # group cross-posted duplicates into one notification
+    group_duplicates: bool = False    # group cross-posted duplicates into one notification
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 
